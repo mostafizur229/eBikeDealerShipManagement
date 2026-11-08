@@ -1,0 +1,41 @@
+## Build & Publish Output Folders
+bin/
+obj/
+publish/
+publish-win/
+publish-linux/
+**/publish/
+**/publish-win/
+**/bin/
+**/obj/
+
+## Visual Studio & IDE Caches
+.vs/
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+## Sensitive Environment & Secrets (Security Protection)
+appsettings.Development.json
+appsettings.Production.json
+appsettings.*.local.json
+*.local.json
+
+## Runtime Uploads & Logs
+wwwroot/uploads/*
+!wwwroot/uploads/.gitkeep
+logs/
+*.log
+
+## Testing & Coverage Artifacts
+TestResults/
+*.trx
+*.coverage
+*.coveragexml

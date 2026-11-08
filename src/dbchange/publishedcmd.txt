@@ -1,0 +1,2 @@
+cd /d "H:\Github Source\eBikeBackend"
+dotnet publish src/eBike.API/eBike.API.csproj -c Release -r win-x64 --self-contained true -o ./publish-win

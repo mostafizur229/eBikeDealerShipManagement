@@ -1,0 +1,20 @@
+namespace eBike.Domain.Entities;
+
+public class BRTARate
+{
+    public int ID { get; set; }
+    public int RegType { get; set; }
+    public decimal CC { get; set; }
+    public decimal NewRegMF { get; set; }
+    public decimal NewRegIF { get; set; }
+    public decimal IssueTaxTokeMF { get; set; }
+    public decimal RegCertificateMF { get; set; }
+    public decimal SupplementaryMF { get; set; }
+    public decimal NamePlate { get; set; }
+    public decimal Contribution { get; set; }
+    public int ConcernID { get; set; }
+
+    public decimal TotalAmount =>
+        NewRegMF + NewRegIF + IssueTaxTokeMF + RegCertificateMF + SupplementaryMF + NamePlate + Contribution;
+}
+

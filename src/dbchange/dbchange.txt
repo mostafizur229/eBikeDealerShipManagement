@@ -1,0 +1,550 @@
+-----------------------------------------------------------------------------
+---- mostafizur (Fix Spare Parts Filter & Seed Stock for Workshop) ----------
+---- Date: 2026-10-31 -------------------------------------------------------
+-----------------------------------------------------------------------------
+
+-- Set IsPartsService = 0 for vehicles/non-parts incorrectly flagged as spare parts
+UPDATE dbo.Products
+SET IsPartsService = 0
+WHERE ProductID IN (47245, 2312, 2310, 2306);
+GO
+
+-- Ensure stock for genuine motorcycle spare parts in Concern 3056 (Godown 3096)
+IF NOT EXISTS (SELECT 1 FROM dbo.Stocks WHERE ConcernID = 3056 AND ProductID = 38777)
+BEGIN
+    INSERT INTO dbo.Stocks (StockCode, EntryDate, Quantity, ProductID, MRPPrice, LPPrice, ColorID, ConcernID, CreatedBy, CreateDate, GodownID)
+    VALUES ('09112', GETDATE(), 25, 38777, 560, 560, 9, 3056, 1, GETDATE(), 3096);
+    DECLARE @S1 INT = SCOPE_IDENTITY();
+    INSERT INTO dbo.StockDetails (StockCode, ProductID, IMENO, StockID, Status, ColorID, POrderDetailID, PRate, SRate, CreditSRate, CRSalesRate12Month, CRSalesRate3Month, Quantity, GodownID, TransferDetailID, EngineNo, KeyNo)
+    VALUES ('09112', 38777, 'No Barcode', @S1, 1, 9, 0, 480, 560, 560, 560, 560, 25, 3096, 0, '0', '0');
+END
+GO
+
+-----------------------------------------------------------------------------
+---- mostafizur (Fix FK_ServiceTickets_ServiceTechnicians constraint) --------
+---- Date: 2026-10-31 -------------------------------------------------------
+-----------------------------------------------------------------------------
+
+IF EXISTS (SELECT * FROM sys.foreign_keys WHERE name = 'FK_ServiceTickets_ServiceTechnicians')
+BEGIN
+    ALTER TABLE [dbo].[ServiceTickets] DROP CONSTRAINT [FK_ServiceTickets_ServiceTechnicians];
+END
+GO
+
+-----------------------------------------------------------------------------
+---- mostafizur (Fix FK_ServiceTicketItems_SpareParts constraint) -----------
+---- Date: 2026-10-29 -------------------------------------------------------
+-----------------------------------------------------------------------------
+
+IF EXISTS (SELECT * FROM sys.foreign_keys WHERE name = 'FK_ServiceTicketItems_SpareParts')
+BEGIN
+    ALTER TABLE [dbo].[ServiceTicketItems] DROP CONSTRAINT [FK_ServiceTicketItems_SpareParts];
+END
+GO
+
+-----------------------------------------------------------------------------
+---- mostafizur (Workshop Digital Periodic Checklist Points Master CRUD) -------
+---- Date: 2026-10-29 -------------------------------------------------------
+-----------------------------------------------------------------------------
+
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'WorkshopChecklistMasters')
+BEGIN
+    CREATE TABLE [dbo].[WorkshopChecklistMasters] (
+        [ItemId] INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+        [Category] NVARCHAR(100) NOT NULL,
+        [Description] NVARCHAR(500) NOT NULL,
+        [ToDoAction] NVARCHAR(200) NOT NULL,
+        [IntervalNotes] NVARCHAR(200) NULL,
+        [DefaultRemarks] NVARCHAR(500) NULL,
+        [DisplayOrder] INT NOT NULL DEFAULT 1,
+        [IsActive] BIT NOT NULL DEFAULT 1,
+        [CreatedAt] DATETIME NOT NULL DEFAULT GETDATE(),
+        [UpdatedAt] DATETIME NULL
+    );
+
+    INSERT INTO [dbo].[WorkshopChecklistMasters] ([Category], [Description], [ToDoAction], [IntervalNotes], [DefaultRemarks], [DisplayOrder], [IsActive])
+    VALUES
+    (N'Engine & Fuel System', N'Engine oil (level CLEAN/replace)', N'Replace', N'Every service', N'15W-50 Semi-synthetic oil', 1, 1),
+    (N'Engine & Fuel System', N'Engine oil filter element', N'Replace', N'Every service', N'Genuine RE O-ring replaced', 2, 1),
+    (N'Engine & Fuel System', N'Engine oil strainer on crankcase LH', N'Clean', N'Periodic clean', N'Mesh cleared of metallic residue', 3, 1),
+    (N'Engine & Fuel System', N'Inlet/exhaust tappet setting', N'Inspect & Adjust', N'Inspect & adjust', N'Feeler gauge clearance checked', 4, 1),
+    (N'Air Intake & Emissions', N'Rubber hose-intake adapter', N'Inspect (Clean/Adjust/Lubricate or replace if necessary)', N'Visual inspection', NULL, 5, 1),
+    (N'Air Intake & Emissions', N'Evaporative emission equipment rubber hoses & drain overfill plug', N'Inspect (Clean/Adjust/Lubricate or replace if necessary)', N'Inspect hoses & plug', NULL, 6, 1),
+    (N'Engine & Fuel System', N'Spark plug', N'Clean & Adjust', N'Inspect gap', N'Electrode gap set to 0.7mm', 7, 1),
+    (N'Electrical & Ignition', N'HT lead for crack', N'Inspect (Clean/Adjust/Lubricate or replace if necessary)', N'Crack inspection', NULL, 8, 1),
+    (N'Air Intake & Emissions', N'Air filter element', N'Replace', N'Replace per manual', N'Clean box before fitting', 9, 1),
+    (N'Air Intake & Emissions', N'Vent pipe under air filter box', N'Inspect (Clean/Adjust/Lubricate or replace if necessary)', N'Check vent pipe', NULL, 10, 1),
+    (N'Electrical & Ignition', N'Starter motor & starter relay connections', N'Inspect (Clean/Adjust/Lubricate or replace if necessary)', N'Check terminals', NULL, 11, 1),
+    (N'Electrical & Ignition', N'Battery terminals (apply petroleum jelly)', N'Clean', N'Clean & grease', N'Voltage 12.8V healthy', 12, 1),
+    (N'Engine & Fuel System', N'Injector hose', N'Inspect (Clean/Adjust/Lubricate or replace if necessary)', N'Leakage check', NULL, 13, 1),
+    (N'Suspension, Frame & Wheels', N'Front fork oil', N'Inspect (Clean/Adjust/Lubricate or replace if necessary)', N'Seal & damping check', N'No seal leakage', 14, 1),
+    (N'Suspension, Frame & Wheels', N'Spokes tightness/wheel rim run out front & rear', N'Inspect (Clean/Adjust/Lubricate or replace if necessary)', N'Spoke torquing', N'Rear spoke torqued', 15, 1),
+    (N'Suspension, Frame & Wheels', N'Tire wear pattern & pressure (front & rear)', N'Inspect (Clean/Adjust/Lubricate or replace if necessary)', N'Pressure & tread depth', N'Pressure set F:32 R:36 PSI', 16, 1),
+    (N'Brakes & Controls', N'Front & rear brake hose & banjo bolt', N'Inspect (Clean/Adjust/Lubricate or replace if necessary)', N'Check banjo tightness', NULL, 17, 1),
+    (N'Brakes & Controls', N'Brake fluid level, front & rear disc', N'Inspect (Clean/Adjust/Lubricate or replace if necessary)', N'Fluid reservoir check', N'DOT 4 level at max', 18, 1),
+    (N'Brakes & Controls', N'Pivot-side stand, center stand, foot rest, gear shifter, levers', N'Lubricate', N'Pivot lubrication', N'All pivots greased', 19, 1),
+    (N'Brakes & Controls', N'Brake pads - front & rear', N'Inspect (Clean/Adjust/Lubricate or replace if necessary)', N'Thickness check', N'Front 3.5mm, Rear 3.2mm left', 20, 1),
+    (N'Electrical & Ignition', N'Side stand switch operation', N'Inspect (Clean/Adjust/Lubricate or replace if necessary)', N'Safety cutout test', N'Engine cutoff test OK', 21, 1),
+    (N'Suspension, Frame & Wheels', N'All mounting fasteners in vehicle for tightness', N'Inspect (Clean/Adjust/Lubricate or replace if necessary)', N'Torque check', N'Chassis torque verified', 22, 1),
+    (N'Engine & Fuel System', N'Throttle body - cleaning', N'Inspect (Clean/Adjust/Lubricate or replace if necessary)', N'Clean carbon deposits', N'Carbon sprayed & cleared', 23, 1),
+    (N'Suspension, Frame & Wheels', N'Steering ball races play', N'Inspect/adjust, if required lubricate. Replace if necessary.', N'Headstock bearing check', N'Smooth rotation', 24, 1),
+    (N'Suspension, Frame & Wheels', N'Swing arm pivot bush & spacer', N'Inspect, if required lubricate. Replace if necessary.', N'Bush play check', NULL, 25, 1),
+    (N'Brakes & Controls', N'Rear wheel drive chain', N'Clean, lubricate every 1000 km / adjust every 5000 km', N'Slack & lube', N'Slack set to 25mm', 26, 1),
+    (N'Brakes & Controls', N'Clutch lever/cable free play', N'Adjust every 1000 km / replace if required', N'Cable play 10-15mm', N'Play set to 10-15mm', 27, 1),
+    (N'Brakes & Controls', N'Hand levers & foot levers', N'Lubricate every 1000 km or earlier as required', N'Pivot lube', NULL, 28, 1),
+    (N'Brakes & Controls', N'Throttle cable free play', N'Adjust every 5000 km or earlier if required', N'Play 2-3mm', N'Free play 2-3mm', 29, 1);
+END;
+GO
+
+-----------------------------------------------------------------------------
+---- mostafizur (Dynamic Workshop Service Bays & Daily Time Slots Management) ---
+---- Date: 2026-10-29 -------------------------------------------------------
+-----------------------------------------------------------------------------
+
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'WorkshopBays')
+BEGIN
+    CREATE TABLE [dbo].[WorkshopBays] (
+        [BayId] INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+        [BayName] NVARCHAR(100) NOT NULL,
+        [BayType] NVARCHAR(100) NOT NULL,
+        [Description] NVARCHAR(250) NULL,
+        [Capacity] INT NOT NULL DEFAULT 1,
+        [IsActive] BIT NOT NULL DEFAULT 1,
+        [DisplayOrder] INT NOT NULL DEFAULT 1,
+        [CreatedDate] DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+        [ConcernID] INT NOT NULL DEFAULT 3056
+    );
+
+    INSERT INTO [dbo].[WorkshopBays] ([BayName], [BayType], [Description], [Capacity], [IsActive], [DisplayOrder], [ConcernID])
+    VALUES 
+        ('Bay 01 (Hydraulic Ramp)', 'Hydraulic Ramp', 'General Periodic Maintenance Ramp', 1, 1, 1, 3056),
+        ('Bay 02 (Quick Service)', 'Quick Service', 'Running Repair & Express Lube', 1, 1, 2, 3056),
+        ('Bay 03 (Major Mechanical)', 'Major Mechanical', 'Engine Overhaul & Major Teardown', 1, 1, 3, 3056),
+        ('Bay 04 (Washing & Polishing)', 'Washing & Polishing', 'Water Wash & Detailing Bay', 1, 1, 4, 3056);
+END;
+GO
+
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'WorkshopTimeSlots')
+BEGIN
+    CREATE TABLE [dbo].[WorkshopTimeSlots] (
+        [SlotId] INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+        [SlotName] NVARCHAR(100) NOT NULL,
+        [StartTime] NVARCHAR(20) NOT NULL,
+        [EndTime] NVARCHAR(20) NOT NULL,
+        [MaxCapacity] INT NOT NULL DEFAULT 4,
+        [IsActive] BIT NOT NULL DEFAULT 1,
+        [DisplayOrder] INT NOT NULL DEFAULT 1,
+        [CreatedDate] DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+        [ConcernID] INT NOT NULL DEFAULT 3056
+    );
+
+    INSERT INTO [dbo].[WorkshopTimeSlots] ([SlotName], [StartTime], [EndTime], [MaxCapacity], [IsActive], [DisplayOrder], [ConcernID])
+    VALUES
+        ('Slot 01: 09:00 AM - 10:30 AM', '09:00 AM', '10:30 AM', 4, 1, 1, 3056),
+        ('Slot 02: 10:30 AM - 12:00 PM', '10:30 AM', '12:00 PM', 4, 1, 2, 3056),
+        ('Slot 03: 12:00 PM - 01:30 PM', '12:00 PM', '01:30 PM', 4, 1, 3, 3056),
+        ('Slot 04: 02:30 PM - 04:00 PM', '02:30 PM', '04:00 PM', 4, 1, 4, 3056),
+        ('Slot 05: 04:00 PM - 05:30 PM', '04:00 PM', '05:30 PM', 4, 1, 5, 3056);
+END;
+GO
+
+-----------------------------------------------------------------------------
+---- mostafizur (ServiceTickets & Job Card Parts Sales Order Integration) ----
+---- Date: 2026-10-29 -------------------------------------------------------
+-----------------------------------------------------------------------------
+
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[ServiceTickets]') AND name = 'SalesOrderId')
+BEGIN
+    ALTER TABLE [dbo].[ServiceTickets] ADD [SalesOrderId] INT NULL;
+END
+GO
+
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[ServiceTickets]') AND name = 'SalesInvoiceNo')
+BEGIN
+    ALTER TABLE [dbo].[ServiceTickets] ADD [SalesInvoiceNo] NVARCHAR(100) NULL;
+END
+GO
+
+
+
+
+-----------------------------------------------------------------------------
+---- mostafizur (Royal Enfield 29-Point Digital Periodic Checklist) ---------
+---- Date: 2026-10-29 -------------------------------------------------------
+-----------------------------------------------------------------------------
+
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'VehiclePeriodicChecklists')
+BEGIN
+    CREATE TABLE [dbo].[VehiclePeriodicChecklists] (
+        [ChecklistID] INT IDENTITY(1,1) NOT NULL,
+        [JobCardID] INT NULL,
+        [TicketNumber] NVARCHAR(50) NULL,
+        [VehicleID] INT NULL,
+        [CustomerID] INT NOT NULL,
+        [CustomerName] NVARCHAR(150) NOT NULL,
+        [CustomerPhone] NVARCHAR(50) NULL,
+        [ChassisNo] NVARCHAR(100) NOT NULL,
+        [RegistrationNo] NVARCHAR(50) NULL,
+        [BikeModel] NVARCHAR(150) NOT NULL,
+        [OdometerReading] DECIMAL(18,2) NOT NULL DEFAULT 0.00,
+        [ServiceType] NVARCHAR(100) NOT NULL DEFAULT '3rd Free Service',
+        [InspectionDate] DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        [InspectorEmployeeID] INT NULL,
+        [InspectorName] NVARCHAR(150) NULL,
+        [OverallStatus] NVARCHAR(50) NOT NULL DEFAULT 'Compliant',
+        [CompliantCount] INT NOT NULL DEFAULT 29,
+        [ActionRequiredCount] INT NOT NULL DEFAULT 0,
+        [ItemsJson] NVARCHAR(MAX) NOT NULL,
+        [GeneralNotes] NVARCHAR(MAX) NULL,
+        [ConcernID] INT NOT NULL DEFAULT 3056,
+        [CreatedBy] INT NULL,
+        [CreatedDate] DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        [ModifiedBy] INT NULL,
+        [ModifiedDate] DATETIME2 NULL,
+        CONSTRAINT [PK_VehiclePeriodicChecklists] PRIMARY KEY CLUSTERED ([ChecklistID] ASC)
+    );
+
+    CREATE NONCLUSTERED INDEX [IX_VehiclePeriodicChecklists_ChassisNo] ON [dbo].[VehiclePeriodicChecklists] ([ChassisNo]);
+    CREATE NONCLUSTERED INDEX [IX_VehiclePeriodicChecklists_CustomerID] ON [dbo].[VehiclePeriodicChecklists] ([CustomerID]);
+    CREATE NONCLUSTERED INDEX [IX_VehiclePeriodicChecklists_JobCardID] ON [dbo].[VehiclePeriodicChecklists] ([JobCardID]);
+    CREATE NONCLUSTERED INDEX [IX_VehiclePeriodicChecklists_InspectionDate] ON [dbo].[VehiclePeriodicChecklists] ([InspectionDate]);
+END
+GO
+
+
+-----------------------------------------------------------------------------
+---- mostafizur (CustomerVehicles & Periodic Service Tracking) -------------
+---- Date: 2026-10-29 -------------------------------------------------------
+-----------------------------------------------------------------------------
+
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'CustomerVehicles')
+BEGIN
+    CREATE TABLE [dbo].[CustomerVehicles] (
+        [VehicleID] INT IDENTITY(1,1) NOT NULL,
+        [CustomerID] INT NOT NULL,
+        [ProductID] INT NOT NULL,
+        [ColorID] INT NULL,
+        [RegistrationNo] NVARCHAR(50) NULL,
+        [ChassisNo] NVARCHAR(100) NOT NULL,
+        [EngineNo] NVARCHAR(100) NOT NULL,
+        [KeyNo] NVARCHAR(50) NULL,
+        [OriginType] NVARCHAR(50) NOT NULL DEFAULT 'OwnShowroom',
+        [SOrderID] INT NULL,
+        [OriginalShowroomName] NVARCHAR(150) NULL,
+        [OriginalInvoiceNo] NVARCHAR(50) NULL,
+        [OriginalPurchaseDate] DATETIME2 NULL,
+        [RelocationReasonNotes] NVARCHAR(MAX) NULL,
+        [WarrantyStatus] NVARCHAR(50) NOT NULL DEFAULT 'Active',
+        [WarrantyExpiryDate] DATETIME2 NULL,
+        [TotalFreeServicesEntitled] INT NOT NULL DEFAULT 4,
+        [FreeServicesCompleted] INT NOT NULL DEFAULT 0,
+        [CurrentOdometerReading] DECIMAL(18,2) NOT NULL DEFAULT 0.00,
+        [LastServiceDate] DATETIME2 NULL,
+        [ConcernID] INT NOT NULL DEFAULT 3056,
+        [CreatedBy] INT NULL,
+        [CreatedDate] DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        [ModifiedBy] INT NULL,
+        [ModifiedDate] DATETIME2 NULL,
+        CONSTRAINT [PK_CustomerVehicles] PRIMARY KEY CLUSTERED ([VehicleID] ASC),
+        CONSTRAINT [FK_CustomerVehicles_Customers] FOREIGN KEY ([CustomerID]) REFERENCES [dbo].[Customers] ([CustomerID]),
+        CONSTRAINT [FK_CustomerVehicles_SisterConcerns] FOREIGN KEY ([ConcernID]) REFERENCES [dbo].[SisterConcerns] ([ConcernID])
+    );
+
+    CREATE NONCLUSTERED INDEX [IX_CustomerVehicles_ChassisNo] ON [dbo].[CustomerVehicles] ([ChassisNo]);
+    CREATE NONCLUSTERED INDEX [IX_CustomerVehicles_CustomerID] ON [dbo].[CustomerVehicles] ([CustomerID]);
+    CREATE NONCLUSTERED INDEX [IX_CustomerVehicles_ConcernID] ON [dbo].[CustomerVehicles] ([ConcernID]);
+END
+ELSE
+BEGIN
+    IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('CustomerVehicles') AND name = 'FreeServicesCompleted')
+        ALTER TABLE [dbo].[CustomerVehicles] ADD [FreeServicesCompleted] INT NOT NULL DEFAULT 0;
+
+    IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('CustomerVehicles') AND name = 'TotalFreeServicesEntitled')
+        ALTER TABLE [dbo].[CustomerVehicles] ADD [TotalFreeServicesEntitled] INT NOT NULL DEFAULT 4;
+
+    IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('CustomerVehicles') AND name = 'LastServiceDate')
+        ALTER TABLE [dbo].[CustomerVehicles] ADD [LastServiceDate] DATETIME2 NULL;
+
+    IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('CustomerVehicles') AND name = 'CurrentOdometerReading')
+        ALTER TABLE [dbo].[CustomerVehicles] ADD [CurrentOdometerReading] DECIMAL(18,2) NOT NULL DEFAULT 0.00;
+
+    IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('CustomerVehicles') AND name = 'OriginType')
+        ALTER TABLE [dbo].[CustomerVehicles] ADD [OriginType] NVARCHAR(50) NOT NULL DEFAULT 'OwnShowroom';
+
+    IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('CustomerVehicles') AND name = 'OriginalShowroomName')
+        ALTER TABLE [dbo].[CustomerVehicles] ADD [OriginalShowroomName] NVARCHAR(150) NULL;
+
+    IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('CustomerVehicles') AND name = 'OriginalInvoiceNo')
+        ALTER TABLE [dbo].[CustomerVehicles] ADD [OriginalInvoiceNo] NVARCHAR(50) NULL;
+
+    IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('CustomerVehicles') AND name = 'OriginalPurchaseDate')
+        ALTER TABLE [dbo].[CustomerVehicles] ADD [OriginalPurchaseDate] DATETIME2 NULL;
+
+    IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('CustomerVehicles') AND name = 'RelocationReasonNotes')
+        ALTER TABLE [dbo].[CustomerVehicles] ADD [RelocationReasonNotes] NVARCHAR(MAX) NULL;
+
+    IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('CustomerVehicles') AND name = 'ConcernID')
+        ALTER TABLE [dbo].[CustomerVehicles] ADD [ConcernID] INT NOT NULL DEFAULT 3056;
+END
+GO
+
+
+------------------
+----mostafizur-----
+-----------------
+
+
+
+SET ANSI_NULLS ON
+GO
+
+SET QUOTED_IDENTIFIER ON
+GO
+
+CREATE TABLE [dbo].[UserRefreshTokens](
+	[Id] [bigint] IDENTITY(1,1) NOT NULL,
+	[UserId] [int] NOT NULL,
+	[TokenHash] [nvarchar](128) NOT NULL,
+	[TokenFamilyId] [uniqueidentifier] NOT NULL,
+	[CreatedAt] [datetime2](7) NOT NULL,
+	[ExpiresAt] [datetime2](7) NOT NULL,
+	[RevokedAt] [datetime2](7) NULL,
+	[ReplacedByTokenHash] [nvarchar](128) NULL,
+	[CreatedByIp] [nvarchar](50) NULL,
+	[RevokedByIp] [nvarchar](50) NULL,
+	[UserAgent] [nvarchar](500) NULL,
+	[IsRevoked]  AS (case when [RevokedAt] IS NOT NULL then CONVERT([bit],(1)) else CONVERT([bit],(0)) end) PERSISTED,
+ CONSTRAINT [PK_UserRefreshTokens] PRIMARY KEY CLUSTERED 
+(
+	[Id] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
+) ON [PRIMARY]
+GO
+
+ALTER TABLE [dbo].[UserRefreshTokens] ADD  CONSTRAINT [DF_UserRefreshTokens_CreatedAt]  DEFAULT (sysutcdatetime()) FOR [CreatedAt]
+GO
+
+ALTER TABLE [dbo].[UserRefreshTokens]  WITH CHECK ADD  CONSTRAINT [FK_UserRefreshTokens_Users] FOREIGN KEY([UserId])
+REFERENCES [dbo].[Users] ([Id])
+ON DELETE CASCADE
+GO
+
+ALTER TABLE [dbo].[UserRefreshTokens] CHECK CONSTRAINT [FK_UserRefreshTokens_Users]
+GO
+
+
+------------------
+----mostafizur (Service & Inventory Tables)-----
+-----------------
+
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'Warehouses')
+BEGIN
+    CREATE TABLE [dbo].[Warehouses] (
+        [Id] INT IDENTITY(1,1) NOT NULL,
+        [Code] NVARCHAR(50) NOT NULL,
+        [Name] NVARCHAR(150) NOT NULL,
+        [Location] NVARCHAR(250) NOT NULL,
+        [ContactPerson] NVARCHAR(100) NOT NULL,
+        [ContactPhone] NVARCHAR(50) NOT NULL,
+        [IsActive] BIT NOT NULL DEFAULT 1,
+        [CreatedAt] DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        [CreatedBy] INT NULL,
+        [UpdatedAt] DATETIME2 NULL,
+        [UpdatedBy] INT NULL,
+        [IsDeleted] BIT NOT NULL DEFAULT 0,
+        [DeletedAt] DATETIME2 NULL,
+        [DeletedBy] INT NULL,
+        CONSTRAINT [PK_Warehouses] PRIMARY KEY CLUSTERED ([Id] ASC)
+    );
+END
+GO
+
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'EBikes')
+BEGIN
+    CREATE TABLE [dbo].[EBikes] (
+        [Id] INT IDENTITY(1,1) NOT NULL,
+        [ChassisNumber] NVARCHAR(100) NOT NULL,
+        [MotorNumber] NVARCHAR(100) NOT NULL,
+        [Brand] NVARCHAR(100) NOT NULL,
+        [Model] NVARCHAR(100) NOT NULL,
+        [Color] NVARCHAR(50) NOT NULL,
+        [BatteryCapacity] NVARCHAR(50) NOT NULL,
+        [MotorPower] NVARCHAR(50) NOT NULL,
+        [PurchaseCost] DECIMAL(18,2) NOT NULL DEFAULT 0,
+        [SellingPrice] DECIMAL(18,2) NOT NULL DEFAULT 0,
+        [Status] INT NOT NULL DEFAULT 0,
+        [CurrentOdometerKm] INT NULL DEFAULT 0,
+        [Barcode] NVARCHAR(100) NULL,
+        [WarehouseId] INT NOT NULL,
+        [SupplierId] INT NULL,
+        [CreatedAt] DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        [CreatedBy] INT NULL,
+        [UpdatedAt] DATETIME2 NULL,
+        [UpdatedBy] INT NULL,
+        [IsDeleted] BIT NOT NULL DEFAULT 0,
+        [DeletedAt] DATETIME2 NULL,
+        [DeletedBy] INT NULL,
+        CONSTRAINT [PK_EBikes] PRIMARY KEY CLUSTERED ([Id] ASC),
+        CONSTRAINT [FK_EBikes_Warehouses] FOREIGN KEY ([WarehouseId]) REFERENCES [Warehouses] ([Id])
+    );
+END
+GO
+
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'SpareParts')
+BEGIN
+    CREATE TABLE [dbo].[SpareParts] (
+        [Id] INT IDENTITY(1,1) NOT NULL,
+        [PartCode] NVARCHAR(100) NOT NULL,
+        [PartName] NVARCHAR(200) NOT NULL,
+        [Category] NVARCHAR(100) NOT NULL,
+        [Unit] NVARCHAR(50) NOT NULL DEFAULT 'Pcs',
+        [CostPrice] DECIMAL(18,2) NOT NULL DEFAULT 0,
+        [SellingPrice] DECIMAL(18,2) NOT NULL DEFAULT 0,
+        [CurrentStock] INT NOT NULL DEFAULT 0,
+        [MinStockAlertLevel] INT NOT NULL DEFAULT 5,
+        [IsActive] BIT NOT NULL DEFAULT 1,
+        [CreatedAt] DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        [CreatedBy] INT NULL,
+        [UpdatedAt] DATETIME2 NULL,
+        [UpdatedBy] INT NULL,
+        [IsDeleted] BIT NOT NULL DEFAULT 0,
+        [DeletedAt] DATETIME2 NULL,
+        [DeletedBy] INT NULL,
+        CONSTRAINT [PK_SpareParts] PRIMARY KEY CLUSTERED ([Id] ASC)
+    );
+END
+GO
+
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'ServiceTechnicians')
+BEGIN
+    CREATE TABLE [dbo].[ServiceTechnicians] (
+        [Id] INT IDENTITY(1,1) NOT NULL,
+        [EmployeeCode] NVARCHAR(50) NOT NULL,
+        [FullName] NVARCHAR(150) NOT NULL,
+        [Phone] NVARCHAR(50) NOT NULL,
+        [Specialization] NVARCHAR(100) NOT NULL,
+        [IsAvailable] BIT NOT NULL DEFAULT 1,
+        [UserId] INT NULL,
+        [CreatedAt] DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        [CreatedBy] INT NULL,
+        [UpdatedAt] DATETIME2 NULL,
+        [UpdatedBy] INT NULL,
+        [IsDeleted] BIT NOT NULL DEFAULT 0,
+        [DeletedAt] DATETIME2 NULL,
+        [DeletedBy] INT NULL,
+        CONSTRAINT [PK_ServiceTechnicians] PRIMARY KEY CLUSTERED ([Id] ASC)
+    );
+END
+GO
+
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'ServiceTickets')
+BEGIN
+    CREATE TABLE [dbo].[ServiceTickets] (
+        [Id] INT IDENTITY(1,1) NOT NULL,
+        [TicketNumber] NVARCHAR(50) NOT NULL,
+        [EBikeId] INT NULL,
+        [CustomerId] INT NOT NULL,
+        [AssignedTechnicianId] INT NULL,
+        [Status] INT NOT NULL DEFAULT 0,
+        [Priority] INT NOT NULL DEFAULT 1,
+        [CurrentMileageKm] INT NOT NULL DEFAULT 0,
+        [IssueDescription] NVARCHAR(MAX) NOT NULL,
+        [DiagnosisReport] NVARCHAR(MAX) NULL,
+        [WorkNotes] NVARCHAR(MAX) NULL,
+        [LaborCost] DECIMAL(18,2) NOT NULL DEFAULT 0,
+        [PartsCost] DECIMAL(18,2) NOT NULL DEFAULT 0,
+        [Discount] DECIMAL(18,2) NOT NULL DEFAULT 0,
+        [PaidAmount] DECIMAL(18,2) NOT NULL DEFAULT 0,
+        [PromisedDeliveryDate] DATETIME2 NULL,
+        [CompletedDate] DATETIME2 NULL,
+        [DeliveredDate] DATETIME2 NULL,
+        [CreatedAt] DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        [CreatedBy] INT NULL,
+        [UpdatedAt] DATETIME2 NULL,
+        [UpdatedBy] INT NULL,
+        [IsDeleted] BIT NOT NULL DEFAULT 0,
+        [DeletedAt] DATETIME2 NULL,
+        [DeletedBy] INT NULL,
+        CONSTRAINT [PK_ServiceTickets] PRIMARY KEY CLUSTERED ([Id] ASC),
+        CONSTRAINT [FK_ServiceTickets_Customers] FOREIGN KEY ([CustomerId]) REFERENCES [Customers] ([CustomerID]),
+        CONSTRAINT [FK_ServiceTickets_EBikes] FOREIGN KEY ([EBikeId]) REFERENCES [EBikes] ([Id]),
+        CONSTRAINT [FK_ServiceTickets_ServiceTechnicians] FOREIGN KEY ([AssignedTechnicianId]) REFERENCES [ServiceTechnicians] ([Id])
+    );
+END
+GO
+
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'ServiceTicketItems')
+BEGIN
+    CREATE TABLE [dbo].[ServiceTicketItems] (
+        [Id] INT IDENTITY(1,1) NOT NULL,
+        [ServiceTicketId] INT NOT NULL,
+        [SparePartId] INT NOT NULL,
+        [Quantity] INT NOT NULL DEFAULT 1,
+        [UnitPrice] DECIMAL(18,2) NOT NULL DEFAULT 0,
+        [CreatedAt] DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        [CreatedBy] INT NULL,
+        [UpdatedAt] DATETIME2 NULL,
+        [UpdatedBy] INT NULL,
+        [IsDeleted] BIT NOT NULL DEFAULT 0,
+        [DeletedAt] DATETIME2 NULL,
+        [DeletedBy] INT NULL,
+        CONSTRAINT [PK_ServiceTicketItems] PRIMARY KEY CLUSTERED ([Id] ASC),
+        CONSTRAINT [FK_ServiceTicketItems_ServiceTickets] FOREIGN KEY ([ServiceTicketId]) REFERENCES [ServiceTickets] ([Id]) ON DELETE CASCADE,
+        CONSTRAINT [FK_ServiceTicketItems_SpareParts] FOREIGN KEY ([SparePartId]) REFERENCES [SpareParts] ([Id])
+    );
+END
+GO
+
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'StockMovements')
+BEGIN
+    CREATE TABLE [dbo].[StockMovements] (
+        [Id] INT IDENTITY(1,1) NOT NULL,
+        [TransactionType] INT NOT NULL,
+        [SparePartId] INT NULL,
+        [EBikeId] INT NULL,
+        [Quantity] INT NOT NULL DEFAULT 1,
+        [UnitCost] DECIMAL(18,2) NOT NULL DEFAULT 0,
+        [SourceWarehouseId] INT NULL,
+        [DestinationWarehouseId] INT NULL,
+        [ReferenceNumber] NVARCHAR(100) NOT NULL,
+        [Remarks] NVARCHAR(MAX) NULL,
+        [CreatedAt] DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        [CreatedBy] INT NULL,
+        [UpdatedAt] DATETIME2 NULL,
+        [UpdatedBy] INT NULL,
+        [IsDeleted] BIT NOT NULL DEFAULT 0,
+        [DeletedAt] DATETIME2 NULL,
+        [DeletedBy] INT NULL,
+        CONSTRAINT [PK_StockMovements] PRIMARY KEY CLUSTERED ([Id] ASC)
+    );
+END
+GO
+
+------------------
+----mostafizur (ServiceFollowUpLogs - Periodic Maintenance Call Log History)-----
+-----------------
+
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'ServiceFollowUpLogs')
+BEGIN
+    CREATE TABLE [dbo].[ServiceFollowUpLogs] (
+        [FollowUpLogID] INT IDENTITY(1,1) NOT NULL,
+        [VehicleID] INT NULL,
+        [CustomerID] INT NOT NULL,
+        [ChassisNo] NVARCHAR(100) NULL,
+        [CallStatus] NVARCHAR(50) NOT NULL,
+        [CallNotes] NVARCHAR(MAX) NULL,
+        [NextFollowUpDate] DATETIME2 NULL,
+        [AppointmentDate] DATETIME2 NULL,
+        [CallerEmployeeID] INT NULL,
+        [CallerName] NVARCHAR(100) NULL,
+        [CallDateTime] DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        [ConcernID] INT NOT NULL DEFAULT 3056,
+        CONSTRAINT [PK_ServiceFollowUpLogs] PRIMARY KEY CLUSTERED ([FollowUpLogID] ASC),
+        CONSTRAINT [FK_ServiceFollowUpLogs_Customers] FOREIGN KEY ([CustomerID]) REFERENCES [Customers] ([CustomerID]),
+        CONSTRAINT [FK_ServiceFollowUpLogs_SisterConcerns] FOREIGN KEY ([ConcernID]) REFERENCES [SisterConcerns] ([ConcernID])
+    );
+    CREATE NONCLUSTERED INDEX [IX_ServiceFollowUpLogs_ChassisNo] ON [dbo].[ServiceFollowUpLogs] ([ChassisNo]);
+    CREATE NONCLUSTERED INDEX [IX_ServiceFollowUpLogs_CustomerID] ON [dbo].[ServiceFollowUpLogs] ([CustomerID]);
+END
+GO
+

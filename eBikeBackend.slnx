@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/eBike.API/eBike.API.csproj" />
+    <Project Path="src/eBike.Application/eBike.Application.csproj" />
+    <Project Path="src/eBike.Domain/eBike.Domain.csproj" />
+    <Project Path="src/eBike.Infrastructure/eBike.Infrastructure.csproj" />
+  </Folder>
+</Solution>
